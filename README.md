@@ -6,6 +6,17 @@ create shared directory
 This script creates a directory with proper permissions for sharing files
 between local users and creates symbolic links on every user's desktop.
 
+Usage:
+```
+sudo ./csdir check|do-it
+
+    check   check prerequisites
+    do-it   does the following tasks:
+            - creates new directory /home/shared
+            - sets acl permissions: group-writable for users
+            - creates symlinks for each user of that group
+```
+
 Requirements:
 
    * ACL enabled (permissions must be inherited from shared directory)
