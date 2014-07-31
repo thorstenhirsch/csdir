@@ -1,0 +1,4 @@
+csdir
+=====
+
+create shared directory
