@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# csdir (create shared directory)
+#
+# creates a directory with proper permissions for sharing files between
+# local users and creates symbolic links on every user's desktop
+#
+# -> check out the CONFIG section, adapt it to fit your needs!
+#
+# Copyright 2014 Thorsten Hirsch
+# License: GPL v3 (for details see LICENSE)
+#
+# History: (entry on top == current version)
+# 20140731 initial version
+
+### CONFIG START ###
+SHARED_DIR="/home/shared"
+SHARED_GROUP="users"
+LINK_SUBDIR=$(basename $(xdg-user-dir DESKTOP)) # default: Desktop
+LINK_NAME="shared"
+XDG_FOLDERS="DOWNLOAD TEMPLATES PUBLICSHARE DOCUMENTS MUSIC PICTURES VIDEOS"
+USER_HOMES=$(find /home -maxdepth 1 -group ${SHARED_GROUP} -type d)
+### CONFIG END ####
+
+main()
+{
+    check_args "$@"
+    check_sudo
+    check_shared_dir
+    check_doit "$@"
+    create_shared_dir
+    set_permissions
+    create_links
+    echo "finished."
+
+    exit 0
+}
+
+### SUB FUNCTIONS ###
+
+check_args()
+{
+    if [ "$1" != "check" ] && [ "$1" != "do-it" ]; then
+        cat <<_EOF_
+usage: sudo $0 check|do-it
+
+    check   check prerequisites
+    do-it   does the following tasks:
+            - creates new directory ${SHARED_DIR}
+            - sets acl permissions: group-writable for ${SHARED_GROUP}
+            - creates symlinks for each user of that group
+
+_EOF_
+        exit 1
+    fi
+}
+
+check_doit()
+{
+    if [ "$1" != "do-it" ]; then
+        echo "check successful. you can do-it!"
+        exit 0
+    fi
+}
+
+check_sudo()
+{
+    if [ -z ${SUDO_USER} ]; then
+        echo "must be run with sudo"
+        exit 2
+    fi
+}
+
+check_shared_dir()
+{
+    unset ACLFOUND
+    MOUNT_POINT=$(df -P $(dirname ${SHARED_DIR}) | tail -1 | cut -d' ' -f 1)
+    MOUNT_OPTIONS=$(mount | grep ^"${MOUNT_POINT} " | sed 's/.*(\(.*\))$/\1/')
+    IFS=","
+    for i in ${MOUNT_OPTIONS}; do
+        if [ "$i" == "acl" ]; then ACLFOUND=TRUE; fi
+    done
+    unset IFS
+    if [ -z ${ACLFOUND} ]; then 
+        echo "need a filesystem with acl"
+        exit 3
+    fi
+}
+
+create_shared_dir()
+{
+    echo -n "creating shared directory... "
+    [[ ! -e ${SHARED_DIR} ]] && mkdir ${SHARED_DIR} && echo "OK" || echo "SKIPPED"
+    for i in ${XDG_FOLDERS}; do
+        NAME=$(basename $(xdg-user-dir ${i}))
+        echo -n "- ${NAME} "
+        [[ ! -e ${SHARED_DIR}/${NAME} ]] && mkdir ${SHARED_DIR}/${NAME} && echo "OK" || echo "SKIPPED"
+    done
+}
+
+set_permissions()
+{
+    echo -n "setting permissions... "
+    chgrp -R ${SHARED_GROUP} ${SHARED_DIR} && echo -n "OK" || echo -n "ERROR"
+    chmod -R g+ws ${SHARED_DIR} && echo -n "/OK" || echo -n "/ERROR"
+    setfacl -R -d -m g:${SHARED_GROUP}:rw ${SHARED_DIR} && echo "/OK" || echo "/ERROR"
+}
+
+create_links()
+{
+    echo "creating links for users..."
+    for i in ${USER_HOMES}; do
+        LINK=${i}
+        [[ -n ${LINK_SUBDIR} ]] && LINK="${LINK}/${LINK_SUBDIR}"
+        LINK="${LINK}/${LINK_NAME}"
+        echo -n "- ${LINK} "
+        [[ ! -e ${LINK} ]] && [[ ! -L ${LINK} ]] && ln -s ${SHARED_DIR} ${LINK} && echo "OK" || echo "SKIPPED"
+    done
+}
+
+# function definitions must precede their usage, which is a real pitty,
+# but we can workaround that issue by putting everything in a main function
+
+main "$@"
+
+# END
